@@ -7,9 +7,13 @@ import {
 import { z } from 'zod';
 import axios from 'axios';
 
-const TRELLO_API_KEY=`4ac1a8b865a98616faf469e4c7e5c78e`
-const TRELLO_API_TOKEN=`ATTA28c8061a4879ea1dac0523e7e2ee514ccdef54f9efbc97c5f0ae7caf3f9560b95DF4DD21`
-const TRELLO_API_BASE = `https://api.trello.com/1`;
+// someFile.ts
+import secrets from './secrets';
+
+console.log(secrets); // Access your API key securely
+
+const TRELLO_API_KEY=secrets.TRELLO_API_KEY
+const TRELLO_API_TOKEN=secrets.TRELLO_API_TOKEN
 
 // Utility: Fetch all boards and map their names to IDs
 const fetchBoardNameToIdMap = async () => {
