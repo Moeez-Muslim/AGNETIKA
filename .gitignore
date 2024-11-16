@@ -1,0 +1,6 @@
+node_modules
+.env
+env-variables
+# This is to protect secrets being exposed in a public git repo. Remove this on your own discretion.
+wrangler.toml
+env-variables.d.ts
