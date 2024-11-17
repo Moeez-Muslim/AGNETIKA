@@ -90,28 +90,8 @@ const createCardInList = async (listId: string, cardName: string) => {
   }
 };
 
-// Utility: Assign a member to a card
-const assignMemberToCard = async (cardId: string, memberId: string) => {
-    try {
-      const response = await axios.post(
-        `https://api.trello.com/1/cards/${cardId}/idMembers`,
-        null,
-        {
-          params: {
-            value: memberId,
-            key: TRELLO_API_KEY,
-            token: TRELLO_API_TOKEN,
-          },
-        }
-      );
-      return response.data;
-    } catch (error) {
-      console.error('Error assigning member:', error.response?.data || error.message);
-      throw new Error('Failed to assign the member. Please try again.');
-    }
-  };
 
-  const fetchCardsInList = async (listId: string) => {
+  const fetchCardsInList = async (listId: string): Promise<Record<string, string>> => {
     try {
       const response = await axios.get(`https://api.trello.com/1/lists/${listId}/cards`, {
         params: {
@@ -119,15 +99,21 @@ const assignMemberToCard = async (cardId: string, memberId: string) => {
           token: TRELLO_API_TOKEN,
         },
       });
-      return response.data.map((card: any) => ({
-        name: card.name,
-        url: card.url,
-      }));
+  
+      // Transforming response to a map of card names (lowercased) to IDs
+      const cardNameToIdMap = response.data.reduce((map: Record<string, string>, card: any) => {
+        map[card.name.toLowerCase()] = card.id; // Use the card's ID here
+        return map;
+      }, {});
+  
+      console.log('Card name-to-ID map:', cardNameToIdMap); // Debug: Log the mapping
+      return cardNameToIdMap;
     } catch (error) {
       console.error('Error fetching cards for list:', error.response?.data || error.message);
       throw new Error('Could not fetch cards. Please try again later.');
     }
   };
+  
 
   // Utility: Move a card to another list
 const moveCardToList = async (cardId: string, targetListId: string) => {
@@ -149,6 +135,54 @@ const moveCardToList = async (cardId: string, targetListId: string) => {
       throw new Error('Failed to move the card. Please try again.');
     }
   };
+
+  const assignMemberToCard = async (cardId: string, memberId: string) => {
+    try {
+      const response = await axios.post(
+        `https://api.trello.com/1/cards/${cardId}/idMembers`,
+        null,
+        {
+          params: {
+            key: TRELLO_API_KEY,
+            token: TRELLO_API_TOKEN,
+            value: memberId,
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error assigning member to card:', error.response?.data || error.message);
+      throw new Error('Failed to assign member to the card. Please try again.');
+    }
+  };
+  
+  const fetchWorkspaceMembers = async (boardId: string): Promise<Record<string, string>> => {
+    try {
+      const response = await axios.get(`https://api.trello.com/1/boards/${boardId}/members`, {
+        params: {
+          key: TRELLO_API_KEY,
+          token: TRELLO_API_TOKEN,
+        },
+      });
+  
+      const nameToIdMap: Record<string, string> = {};
+      response.data.forEach((member: any) => {
+        const fullName = member.fullName.toLowerCase();
+        const [firstName, lastName] = fullName.split(' ');
+  
+        // Map full name, first name, and last name to the member ID
+        nameToIdMap[fullName] = member.id;
+        if (firstName) nameToIdMap[firstName] = member.id;
+        if (lastName) nameToIdMap[lastName] = member.id;
+      });
+  
+      return nameToIdMap;
+    } catch (error) {
+      console.error('Error fetching workspace members:', error.response?.data || error.message);
+      throw new Error('Could not fetch workspace members. Please try again later.');
+    }
+  };
+  
   
   
 
@@ -229,76 +263,6 @@ const TrelloCardAssistant = () => {
 
           await e.commit();
         }}
-      />
-
-      {/* Assign Task Action */}
-      <Action
-        name="assignTrelloTask"
-        description="Assigns a task (card) to a specific member in a Trello board."
-        schema={z.object({
-          boardName: z.string(),
-          listName: z.string(),
-          cardName: z.string(),
-          memberName: z.string(),
-        })}
-        examples={[
-          { boardName: 'Agentika', listName: 'To-Do', cardName: 'Finish documentation', memberName: 'John Doe' },
-          { boardName: 'Project Management', listName: 'In Progress', cardName: 'Update designs', memberName: 'Jane Smith' },
-        ]}
-        handler={async (e: PendingActionEvent) => {
-            const { boardName, sourceListName, targetListName, cardName } = e.data.message.args as {
-              boardName: string;
-              sourceListName: string;
-              targetListName: string;
-              cardName: string;
-            };
-          
-            try {
-              // Match board name to ID
-              const boardId = await fetchBoardNameToIdMap().then(map => map[boardName.toLowerCase()]);
-              if (!boardId) {
-                await e.data.agent.monologue(`I couldn't find a board named "${boardName}".`);
-                await e.commit();
-                return;
-              }
-          
-              // Match source and target list names to IDs
-              const listNameToIdMap = await fetchListsInBoard(boardId);
-              console.log('Lists in board:', listNameToIdMap);
-          
-              const sourceListId = listNameToIdMap[sourceListName.toLowerCase()];
-              const targetListId = listNameToIdMap[targetListName.toLowerCase()];
-          
-              if (!sourceListId || !targetListId) {
-                await e.data.agent.monologue(`I couldn't find the lists "${sourceListName}" or "${targetListName}".`);
-                await e.commit();
-                return;
-              }
-          
-              // Match card name to ID in the source list
-              const cardNameToIdMap = await fetchCardsInList(sourceListId);
-              console.log('Cards in source list:', cardNameToIdMap);
-          
-              const cardId = cardNameToIdMap[cardName.toLowerCase()];
-              if (!cardId) {
-                await e.data.agent.monologue(`I couldn't find the card "${cardName}" in the "${sourceListName}" list.`);
-                await e.commit();
-                return;
-              }
-          
-              // Move the card
-              await moveCardToList(cardId, targetListId);
-              await e.data.agent.monologue(
-                `Successfully moved the card "${cardName}" from "${sourceListName}" to "${targetListName}" in the "${boardName}" board!`
-              );
-            } catch (error) {
-              console.error('Error moving card:', error);
-              await e.data.agent.monologue('There was an error moving the card. Please try again.');
-            }
-          
-            await e.commit();
-          }}
-          
       />
 
       {/* Move Card Action */}
@@ -395,6 +359,99 @@ const TrelloCardAssistant = () => {
             );
           } catch (error) {
             await e.data.agent.monologue('There was an error moving the card. Please try again.');
+          }
+
+          await e.commit();
+        }}
+      />
+
+        {/* Assign Task Action */}
+      <Action
+        name="assignTaskToMember"
+        description="Assigns a task (card) to a specific workspace member."
+        schema={z.object({
+          boardName: z.string(),
+          listName: z.string(),
+          cardName: z.string(),
+          memberName: z.string(),
+        })}
+        examples={[
+          { boardName: 'Agentika', listName: 'To-Do', cardName: 'General Testing', memberName: 'John' },
+          { boardName: 'Agentika', listName: 'To-Do', cardName: 'General Testing', memberName: 'Doe' },
+        ]}
+        handler={async (e: PendingActionEvent) => {
+          const { boardName, listName, cardName, memberName } = e.data.message.args as {
+            boardName: string;
+            listName: string;
+            cardName: string;
+            memberName: string;
+          };
+
+          try {
+            // Step 1: Get the board ID
+            const boardId = boardNameToIdMap[boardName.toLowerCase()];
+            if (!boardId) {
+              await e.data.agent.monologue(
+                `I couldn't find a board named "${boardName}". Please check the name and try again.`
+              );
+              await e.commit();
+              return;
+            }
+
+            // Step 2: Get the list ID
+            const listNameToIdMap = await fetchListsInBoard(boardId);
+            const listId = listNameToIdMap[listName.toLowerCase()];
+            if (!listId) {
+              await e.data.agent.monologue(
+                `I couldn't find a list named "${listName}" in the "${boardName}" board.`
+              );
+              await e.commit();
+              return;
+            }
+
+            // Step 3: Get the card ID
+            const cardNameToIdMap = await fetchCardsInList(listId);
+            const cardId = cardNameToIdMap[cardName.toLowerCase()];
+            if (!cardId) {
+              await e.data.agent.monologue(
+                `I couldn't find a card named "${cardName}" in the "${listName}" list of the "${boardName}" board.`
+              );
+              await e.commit();
+              return;
+            }
+
+            // Step 4: Match the member name
+            const memberNameToIdMap = await fetchWorkspaceMembers(boardId);
+            const matchingMemberIds = Object.entries(memberNameToIdMap)
+              .filter(([name]) => name.includes(memberName.toLowerCase()))
+              .map(([, id]) => id);
+
+            if (matchingMemberIds.length === 0) {
+              await e.data.agent.monologue(
+                `I couldn't find a member matching "${memberName}" in the "${boardName}" workspace.`
+              );
+              await e.commit();
+              return;
+            } else if (matchingMemberIds.length > 1) {
+              await e.data.agent.monologue(
+                `I found multiple members matching "${memberName}". Could you please provide the full name?`
+              );
+              await e.commit();
+              return;
+            }
+
+            const memberId = matchingMemberIds[0];
+
+            // Step 5: Assign the member to the card
+            await assignMemberToCard(cardId, memberId);
+            await e.data.agent.monologue(
+              `Successfully assigned "${memberName}" to the task "${cardName}" in the "${listName}" list of the "${boardName}" board.`
+            );
+          } catch (error) {
+            console.error(error);
+            await e.data.agent.monologue(
+              'There was an error assigning the task. Please try again.'
+            );
           }
 
           await e.commit();
