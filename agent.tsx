@@ -9,6 +9,7 @@ import axios from 'axios';
 import TrelloBoardAssistant from './board'
 import TrelloListAssistant from './list';
 import TrelloCardAssistant from './cards';
+import PersonalAssistant from './meetings';
 
 const TrelloAssistant = () => {
   return(
@@ -16,6 +17,7 @@ const TrelloAssistant = () => {
       <TrelloBoardAssistant/>
       <TrelloListAssistant/>
       <TrelloCardAssistant/>
+      <PersonalAssistant/>
     </>
   )
 }

@@ -183,7 +183,25 @@ const moveCardToList = async (cardId: string, targetListId: string) => {
     }
   };
   
-  
+  const setDueDateOnCard = async (cardId: string, dueDate: string) => {
+    try {
+      const response = await axios.put(
+        `https://api.trello.com/1/cards/${cardId}`,
+        null,
+        {
+          params: {
+            due: dueDate,
+            key: TRELLO_API_KEY,
+            token: TRELLO_API_TOKEN,
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error setting due date on card:', error.response?.data || error.message);
+      throw new Error('Failed to set due date on the card. Please try again.');
+    }
+  };  
   
 
 const TrelloCardAssistant = () => {
@@ -457,6 +475,79 @@ const TrelloCardAssistant = () => {
           await e.commit();
         }}
       />
+
+      <Action
+        name="setCardDueDate"
+        description="Sets a due date for a specific card in a Trello board."
+        schema={z.object({
+          boardName: z.string(),
+          listName: z.string(),
+          cardName: z.string(),
+          dueDate: z.string(), // ISO8601 format date
+        })}
+        examples={[
+          { boardName: 'Agentika', listName: 'To-Do', cardName: 'General Testing', dueDate: '2024-11-20T12:00:00.000Z' },
+          { boardName: 'Project Management', listName: 'In Progress', cardName: 'Complete Design', dueDate: '2024-12-01T09:00:00.000Z' },
+        ]}
+        handler={async (e: PendingActionEvent) => {
+          const { boardName, listName, cardName, dueDate } = e.data.message.args as {
+            boardName: string;
+            listName: string;
+            cardName: string;
+            dueDate: string;
+          };
+
+          try {
+            // Step 1: Get the board ID
+            const boardId = boardNameToIdMap[boardName.toLowerCase()];
+            if (!boardId) {
+              await e.data.agent.monologue(
+                `I couldn't find a board named "${boardName}". Please check the name and try again.`
+              );
+              await e.commit();
+              return;
+            }
+
+            // Step 2: Get the list ID
+            const listNameToIdMap = await fetchListsInBoard(boardId);
+            const listId = listNameToIdMap[listName.toLowerCase()];
+            if (!listId) {
+              await e.data.agent.monologue(
+                `I couldn't find a list named "${listName}" in the "${boardName}" board.`
+              );
+              await e.commit();
+              return;
+            }
+
+            // Step 3: Get the card ID
+            const cardNameToIdMap = await fetchCardsInList(listId);
+            const cardId = cardNameToIdMap[cardName.toLowerCase()];
+            if (!cardId) {
+              await e.data.agent.monologue(
+                `I couldn't find a card named "${cardName}" in the "${listName}" list of the "${boardName}" board.`
+              );
+              await e.commit();
+              return;
+            }
+
+            // Step 4: Set the due date
+            try {
+              const updatedCard = await setDueDateOnCard(cardId, dueDate);
+              await e.data.agent.monologue(
+                `Successfully set the due date for "${cardName}" to "${dueDate}".`
+              );
+            } catch (error) {
+              await e.data.agent.monologue('There was an error setting the due date. Please try again.');
+            }
+          } catch (error) {
+            console.error(error);
+            await e.data.agent.monologue('There was an error processing your request. Please try again.');
+          }
+
+          await e.commit();
+        }}
+      />
+
     </>
   );
 };
